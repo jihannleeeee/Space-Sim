@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar System — Interactive Simulation</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ── Reset & base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue:    rgba(80, 180, 255, 1);
+      --blue-lo: rgba(80, 180, 255, 0.18);
+      --blue-md: rgba(80, 180, 255, 0.35);
+      --bg:      rgba(4, 8, 18, 0.9);
+      --border:  rgba(80, 180, 255, 0.22);
+      --text:    rgba(180, 215, 245, 0.9);
+      --muted:   rgba(100, 160, 210, 0.55);
+      --mono:    'Share Tech Mono', monospace;
+      --sans:    'Rajdhani', sans-serif;
+    }
+
+    body {
+      overflow: hidden;
+      background: #000;
+      font-family: var(--sans);
+      color: var(--text);
+      cursor: crosshair;
+    }
+
+    #canvas-host { position: fixed; inset: 0; z-index: 0; }
+    #labels      { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
+    #ui          { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+    #ui > *      { pointer-events: auto; }
+
+    /* ── Labels ───────────────────────────────────────────── */
+    .label {
+      position: absolute;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: rgba(160, 210, 255, 0.75);
+      letter-spacing: 0.06em;
+      pointer-events: none;
+      transform: translate(-50%, -150%);
+      white-space: nowrap;
+      text-shadow: 0 0 8px rgba(0,80,180,0.8);
+    }
+    .label-subtle { color: rgba(130, 170, 210, 0.4); font-size: 9px; }
+
+    /* ── Info panel ───────────────────────────────────────── */
+    #infoPanel {
+      position: fixed;
+      right: 14px;
+      top: 14px;
+      width: 268px;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--blue);
+      backdrop-filter: blur(10px);
+    }
+    #infoPanel::-webkit-scrollbar { width: 3px; }
+    #infoPanel::-webkit-scrollbar-thumb { background: var(--blue-md); }
+
+    .placeholder {
+      padding: 18px 14px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    .panel-header {
+      padding: 12px 14px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: 0.06em;
+    }
+    .panel-subtitle {
+      font-size: 10px;
+      font-family: var(--mono);
+      color: rgba(100, 180, 255, 0.65);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-top: 3px;
+    }
+    .panel-body { padding: 10px 14px 14px; }
+
+    .info-blurb {
+      font-size: 12.5px;
+      line-height: 1.65;
+      color: rgba(185, 215, 245, 0.78);
+      border-left: 2px solid var(--blue-md);
+      padding-left: 8px;
+      margin-bottom: 10px;
+    }
+
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 10px; }
+    .stat-box {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(80,180,255,0.1);
+      border-radius: 3px;
+      padding: 5px 7px;
+    }
+    .stat-label {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: rgba(100,175,255,0.5);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 2px;
+    }
+    .stat-value {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      color: #e8f4ff;
+      font-weight: 500;
+    }
+
+    .section-label {
+      font-family: var(--mono);
+      font-size: 8.5px;
+      color: rgba(100,175,255,0.45);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 5px;
+    }
+    .fact-item {
+      display: flex;
+      gap: 6px;
+      font-size: 11.5px;
+      color: rgba(175, 210, 240, 0.7);
+      line-height: 1.5;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(80,180,255,0.06);
+    }
+    .fact-item::before { content: '›'; color: rgba(80,180,255,0.45); flex-shrink: 0; }
+
+    /* ── Top toolbar ──────────────────────────────────────── */
+    #toolbar {
+      position: fixed;
+      top: 14px;
+      left: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Search */
+    #searchWrap { position: relative; }
+    .search-inner {
+      display: flex;
+      align-items: center;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 0 10px;
+      gap: 6px;
+      height: 34px;
+      width: 200px;
+    }
+    .search-icon { font-size: 15px; color: var(--muted); }
+    #searchInput {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      width: 100%;
+      letter-spacing: 0.04em;
+    }
+    #searchInput::placeholder { color: var(--muted); }
+    .search-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 200px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-top: none;
+      z-index: 10;
+    }
+    .search-dropdown.hidden { display: none; }
+    .dd-item {
+      padding: 7px 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text);
+      cursor: pointer;
+      letter-spacing: 0.04em;
+    }
+    .dd-item:hover { background: var(--blue-lo); }
+
+    /* Tool buttons */
+    .tool-row { display: flex; gap: 6px; }
+    .tool-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      padding: 5px 10px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .tool-btn:hover { background: var(--blue-lo); border-color: var(--blue); }
+    .tool-btn.active { background: rgba(80,180,255,0.22); border-color: var(--blue); color: #fff; }
+
+    /* ── Time bar ─────────────────────────────────────────── */
+    #timeBar {
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+    }
+
+    .tc-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 3px 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tc-btn:hover { color: #fff; border-color: var(--blue); }
+    .tc-speed {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--blue);
+      min-width: 28px;
+      text-align: center;
+    }
+    .tc-slider {
+      -webkit-appearance: none;
+      width: 100px;
+      height: 2px;
+      background: var(--border);
+      outline: none;
+      cursor: pointer;
+    }
+    .tc-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--blue);
+      cursor: pointer;
+    }
+
+    /* ── Escape hint ──────────────────────────────────────── */
+    #escapeHint {
+      position: fixed;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--mono);
+      font-size: 11px;
+      color: rgba(255,255,255,0.28);
+      letter-spacing: 0.05em;
+      pointer-events: none;
+      display: none;
+    }
+
+    /* ── Quiz overlay ─────────────────────────────────────── */
+    #quizOverlay {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: auto;
+    }
+    #quizOverlay.hidden { display: none; }
+
+    .quiz-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--blue);
+      padding: 18px 22px;
+      min-width: 280px;
+      text-align: center;
+      backdrop-filter: blur(10px);
+    }
+    .quiz-box.correct { border-top-color: #44ff99; }
+    .quiz-box.wrong   { border-top-color: #ff4444; }
+
+    .quiz-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .quiz-clue {
+      font-size: 15px;
+      font-weight: 500;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .quiz-clue-2 {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .quiz-score {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--blue);
+    }
+    .quiz-hint {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+    .quiz-result {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+    .quiz-box.correct .quiz-result { color: #44ff99; }
+    .quiz-box.wrong   .quiz-result { color: #ff4444; }
+    .quiz-answer {
+      font-size: 13px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .quiz-next-btn {
+      margin-top: 12px;
+      background: var(--blue-lo);
+      border: 1px solid var(--blue);
+      color: #fff;
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 6px 18px;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+    }
+    .quiz-next-btn:hover { background: var(--blue-md); }
+
+    /* ── Tooltip ──────────────────────────────────────────── */
+    #tooltip {
+      position: fixed;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      padding: 4px 9px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.12s;
+      z-index: 100;
+      white-space: nowrap;
+    }
+
+    /* ── Loading screen ───────────────────────────────────── */
+    #loadScreen {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      transition: opacity 0.8s;
+    }
+    #loadScreen.fade { opacity: 0; pointer-events: none; }
+    .load-title {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--blue);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+    .load-bar-wrap {
+      width: 200px;
+      height: 2px;
+      background: rgba(80,180,255,0.15);
+    }
+    .load-bar {
+      height: 2px;
+      background: var(--blue);
+      width: 0%;
+      transition: width 0.4s;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loadScreen">
+  <div class="load-title">Initialising Solar System</div>
+  <div class="load-bar-wrap"><div class="load-bar" id="loadBar"></div></div>
+</div>
+
+<!-- Three.js canvas -->
+<div id="canvas-host"></div>
+
+<!-- HTML labels -->
+<div id="labels"></div>
+
+<!-- UI layer -->
+<div id="ui">
+
+  <!-- Info panel -->
+  <div id="infoPanel">
+    <div class="placeholder">[ Select a body to scan ]</div>
+  </div>
+
+  <!-- Left toolbar -->
+  <div id="toolbar">
+    <div id="searchWrap"></div>
+    <div class="tool-row">
+      <button class="tool-btn" id="btnScale">True Scale</button>
+      <button class="tool-btn" id="btnOrbits">Hide Orbits</button>
+      <button class="tool-btn" id="btnQuiz">Quiz Mode</button>
+      <button class="tool-btn" id="btnMute">Mute</button>
+    </div>
+  </div>
+
+  <!-- Time bar -->
+  <div id="timeBar"></div>
+
+  <!-- Escape hint -->
+  <div id="escapeHint">drag or scroll to exit orbit view</div>
+
+  <!-- Quiz overlay -->
+  <div id="quizOverlay" class="hidden"></div>
+
+  <!-- Tooltip -->
+  <div id="tooltip"></div>
+
+</div>
+
+<!-- Three.js + OrbitControls (must be global) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script type="module">
+import { BODIES, PLANET_CONFIG, REAL_STARS_CONFIG, DWARF_CONFIG } from './data.js';
+import {
+  buildScene, buildStarfield, buildSun, buildPlanets,
+  buildAsteroidBelt, buildComet, buildRealStars,
+  buildLabel, keplerPos, CameraFocus
+} from './space.js';
+import {
+  showInfo, clearInfo, TimeController, SearchBar,
+  QuizMode, buildScaleToggle, showTooltip, hideTooltip
+} from './ui.js';
+import { SpaceAudio } from './audio.js';
+
+// ── Audio ──────────────────────────────────────────────────────────
+const audio = new SpaceAudio();
+let audioInited = false;
+function ensureAudio() {
+  if (audioInited) return;
+  audioInited = true;
+  audio.init();
+}
+
+// Mute button
+const muteBtn = document.getElementById('btnMute');
+let muted = false;
+muteBtn.addEventListener('click', () => {
+  ensureAudio();
+  muted = !muted;
+  audio.mute(muted);
+  muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+  muteBtn.classList.toggle('active', muted);
+});
+
+// ── Progress bar fake-load ─────────────────────────────────────────
+let progress = 0;
+const loadBar = document.getElementById('loadBar');
+const loadInterval = setInterval(() => {
+  progress += Math.random() * 18;
+  if (progress > 90) { clearInterval(loadInterval); progress = 90; }
+  loadBar.style.width = Math.min(progress, 100) + '%';
+}, 80);
+
+// ── Scene setup ────────────────────────────────────────────────────
+const { scene, camera, renderer, controls } = buildScene();
+
+buildStarfield(scene);
+const sunMesh   = buildSun(scene);
+const planets   = buildPlanets(scene);
+const belt      = buildAsteroidBelt(scene);
+const comet     = buildComet(scene);
+const realStars = buildRealStars(scene);
+
+// ── All clickable objects ──────────────────────────────────────────
+const allClickable = [];
+const allLabels    = [];
+
+// Sun
+allClickable.push(sunMesh);
+allLabels.push({ obj: sunMesh, el: buildLabel('Sun') });
+
+// Planets + moons
+planets.forEach(({ planet, cfg, moons }) => {
+  allClickable.push(planet);
+  allLabels.push({ obj: planet, el: buildLabel(cfg.name) });
+  moons.forEach(({ mesh, cfg: mCfg }) => {
+    allClickable.push(mesh);
+    allLabels.push({ obj: mesh, el: buildLabel(mCfg.name, true) });
+  });
+});
+
+// Real stars
+realStars.forEach(s => {
+  allClickable.push(s);
+  allLabels.push({ obj: s, el: buildLabel(s.userData.name) });
+});
+
+// Comet nucleus
+allClickable.push(comet.nucleus);
+allLabels.push({ obj: comet.nucleus, el: buildLabel('Comet Halley') });
+
+// All names for search / quiz
+const allNames = [
+  ...planets.flatMap(p => [p.cfg.name, ...p.moons.map(m => m.cfg.name)]),
+  'Sun',
+  ...realStars.map(s => s.userData.name),
+  'Comet Halley',
+];
+
+// ── Camera focus ───────────────────────────────────────────────────
+const focus = new CameraFocus(camera, controls);
+
+// ── Time controller ────────────────────────────────────────────────
+const time = new TimeController();
+
+// ── Search bar ─────────────────────────────────────────────────────
+const search = new SearchBar((name) => {
+  const obj = allClickable.find(o => o.userData.name === name);
+  if (obj) {
+    const wp = new THREE.Vector3();
+    obj.getWorldPosition(wp);
+    const r = obj.userData.cfg?.radius ?? 2;
+    focus.focus(obj, Math.max(r * 12, 20));
+    showInfo(name);
+  }
+});
+search.setTargets(allNames);
+
+// ── Quiz mode ──────────────────────────────────────────────────────
+const quiz = new QuizMode(() => allNames);
+
+// ── Scale toggle ───────────────────────────────────────────────────
+let dramaticScale = true;
+// True relative sizes, capped so gas giants don't exceed the Sun (r=5).
+// Real ratio: Sun=109× Earth. Jupiter=11× Earth → Jupiter/Sun = ~0.10
+// Here Sun r=5, so Jupiter true = 5*0.10 = 0.5 — too tiny to see.
+// Compromise: Sun=5, Jupiter=3.5, Saturn=3.0, scale others proportionally.
+const TRUE_SCALE_R = {
+  Mercury: 0.28, Venus: 0.70, Earth: 0.74, Mars: 0.39,
+  Jupiter: 3.5,  Saturn: 3.0, Uranus: 1.8, Neptune: 1.75,
+  Pluto: 0.14, Ceres: 0.08,
+};
+buildScaleToggle((dramatic) => {
+  dramaticScale = dramatic;
+  planets.forEach(({ planet, cfg }) => {
+    const r = dramatic ? cfg.radius : (TRUE_SCALE_R[cfg.name] ?? cfg.radius);
+    planet.scale.setScalar(r / cfg.radius);
+  });
+});
+
+// ── Orbit visibility toggle ────────────────────────────────────────
+let orbitsVisible = true;
+document.getElementById('btnOrbits').addEventListener('click', () => {
+  orbitsVisible = !orbitsVisible;
+  scene.children.forEach(child => {
+    if (child.isLine || child.isLineLoop) child.visible = orbitsVisible;
+  });
+  document.getElementById('btnOrbits').textContent = orbitsVisible ? 'Hide Orbits' : 'Show Orbits';
+});
+
+// ── Raycaster & click ──────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse     = new THREE.Vector2();
+
+renderer.domElement.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / window.innerWidth)  *  2 - 1;
+  mouse.y = (e.clientY / window.innerHeight) * -2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(allClickable);
+  if (hits.length) {
+    document.body.style.cursor = 'pointer';
+    showTooltip(hits[0].object.userData.name, e.clientX, e.clientY);
+  } else {
+    document.body.style.cursor = 'crosshair';
+    hideTooltip();
+  }
+});
+
+window.addEventListener('click', (e) => {
+  if (focus.wasDrag) { focus.resetDrag(); return; }
+
+  mouse.x = (e.clientX / window.innerWidth)  *  2 - 1;
+  mouse.y = (e.clientY / window.innerHeight) * -2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(allClickable);
+
+  if (!hits.length) return;
+
+  const obj  = hits[0].object;
+  const name = obj.userData.name;
+
+  ensureAudio();
+  audio.playZoom();
+  audio.playPlanetTone(name);
+
+  // Quiz check
+  if (quiz.active) {
+    quiz.checkAnswer(name);
+    showInfo(name);
+    return;
+  }
+
+  const r = obj.userData.cfg?.radius ?? 2;
+  const orbitR = name === 'Sun' ? 100
+    : obj.userData.bodyType === 'realStar' ? 50
+    : Math.max(r * 10, 15);
+
+  focus.focus(obj, orbitR);
+  showInfo(name);
+});
+
+// ── Label updater ──────────────────────────────────────────────────
+function updateLabels() {
+  allLabels.forEach(({ obj, el }) => {
+    const pos = new THREE.Vector3();
+    obj.getWorldPosition(pos);
+    const v = pos.clone().project(camera);
+
+    // Cull labels behind camera or too far to sides
+    if (v.z > 1) { el.style.display = 'none'; return; }
+    el.style.display = '';
+
+    const x = (v.x *  0.5 + 0.5) * window.innerWidth;
+    const y = (v.y * -0.5 + 0.5) * window.innerHeight;
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+
+    // Fade by distance
+    const dist = camera.position.distanceTo(pos);
+    const fade = THREE.MathUtils.clamp(1 - (dist - 20) / 300, 0.1, 1);
+    el.style.opacity = fade;
+  });
+}
+
+// ── Planet orbit & rotation animation ─────────────────────────────
+function animatePlanets(dt) {
+  const speedMult = time.multiplier;
+
+  planets.forEach(({ group, planet, cloudMesh, ringMesh, cfg, moons }) => {
+    const { x, z } = keplerPos(cfg.a, cfg.e, cfg.theta);
+    cfg.theta += (cfg.speed / (cfg.a)) * speedMult * 0.5;
+
+    group.position.set(x, 0, z);
+
+    // Self-rotation
+    planet.rotation.y += 0.003 * speedMult;
+    if (cloudMesh) cloudMesh.rotation.y += 0.0035 * speedMult;
+
+    // Rings tilt to match planet tilt
+    if (ringMesh) {
+      ringMesh.rotation.x = Math.PI / 2;
+      ringMesh.rotation.z = THREE.MathUtils.degToRad(cfg.tilt ?? 0);
+    }
+
+    // Moons
+    moons.forEach(({ mesh, cfg: mCfg }) => {
+      mCfg.theta += mCfg.speed * speedMult * 0.05;
+      mesh.position.x = group.position.x + mCfg.orbitR * Math.cos(mCfg.theta);
+      mesh.position.z = group.position.z + mCfg.orbitR * Math.sin(mCfg.theta);
+      mesh.position.y = group.position.y + Math.sin(mCfg.theta * 0.3) * 0.3;
+      mesh.rotation.y += 0.005 * speedMult;
+    });
+  });
+}
+
+// ── Comet animation ────────────────────────────────────────────────
+function animateComet(dt) {
+  const d = comet.orbitData;
+  d.theta += d.speed * time.multiplier * 0.5;
+  const { x, z } = keplerPos(d.a, d.e, d.theta);
+
+  // Move nucleus
+  const nucleus = comet.nucleus;
+  nucleus.position.set(x, 2, z);
+
+  // Direction away from Sun (in XZ plane)
+  const awayX = x / (Math.sqrt(x*x + z*z) || 1);
+  const awayZ = z / (Math.sqrt(x*x + z*z) || 1);
+
+  // ── Update dust tail particles ──────────────────────────────────
+  const dustGeo = nucleus._dustTail.geometry;
+  const dustPos = dustGeo.attributes.position.array;
+  const dustCol = dustGeo.attributes.color.array;
+  const DUST    = nucleus._dustCount;
+
+  for (let i = 0; i < DUST; i++) {
+    const t      = (i + 1) / DUST;               // start at 1 so no particle sits ON the nucleus
+    const spread = t * 3.5;               // fan widens with distance
+    const len    = t * 16;                // tail length
+    // slight random perpendicular spread
+    const seed   = (i * 1.618) % 1;
+    const perp   = (seed - 0.5) * 2 * spread;
+    // perpendicular in XZ: rotate awayDir by 90°
+    dustPos[i*3]   = x  + awayX * len  + (-awayZ) * perp;
+    dustPos[i*3+1] = 2  + (seed - 0.5) * spread * 0.3;
+    dustPos[i*3+2] = z  + awayZ * len  + ( awayX) * perp;
+    // warm white → fading grey
+    const bright = 1 - t * 0.85;
+    dustCol[i*3]   = bright;
+    dustCol[i*3+1] = bright * 0.92;
+    dustCol[i*3+2] = bright * 0.82;
+  }
+  dustGeo.attributes.position.needsUpdate = true;
+  dustGeo.attributes.color.needsUpdate    = true;
+
+  // ── Update ion tail particles ───────────────────────────────────
+  const ionGeo = nucleus._ionTail.geometry;
+  const ionPos = ionGeo.attributes.position.array;
+  const ionCol = ionGeo.attributes.color.array;
+  const ION    = nucleus._ionCount;
+
+  for (let i = 0; i < ION; i++) {
+    const t      = (i + 1) / ION;
+    const spread = t * 0.8;              // very narrow ion tail
+    const len    = t * 22;              // slightly longer than dust tail
+    const seed   = (i * 2.618) % 1;
+    const perp   = (seed - 0.5) * 2 * spread;
+    ionPos[i*3]   = x + awayX * len + (-awayZ) * perp;
+    ionPos[i*3+1] = 2 + (seed - 0.5) * 0.2;
+    ionPos[i*3+2] = z + awayZ * len + ( awayX) * perp;
+    // bright blue → fading
+    const bright = 1 - t * 0.9;
+    ionCol[i*3]   = bright * 0.3;
+    ionCol[i*3+1] = bright * 0.75;
+    ionCol[i*3+2] = bright;
+  }
+  ionGeo.attributes.position.needsUpdate = true;
+  ionGeo.attributes.color.needsUpdate    = true;
+}
+
+// ── Asteroid belt slow drift ───────────────────────────────────────
+function animateBelt(dt) {
+  belt.rotation.y += 0.00015 * time.multiplier;
+}
+
+// ── Sun pulse ──────────────────────────────────────────────────────
+let sunPulse = 0;
+function animateSun(dt) {
+  sunPulse += dt * 0.8;
+  const s = 1 + Math.sin(sunPulse) * 0.012;
+  sunMesh.scale.setScalar(s);
+}
+
+// ── Main loop ──────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+let started = false;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+
+  animatePlanets(dt);
+  animateComet(dt);
+  animateBelt(dt);
+  animateSun(dt);
+
+  // Update time warp sound every frame
+  if (audioInited) audio.updateTimeWarp(time.multiplier);
+
+  focus.update();
+  controls.update();
+  updateLabels();
+
+  renderer.render(scene, camera);
+
+  // Hide loader after first frame
+  if (!started) {
+    started = true;
+    clearInterval(loadInterval);
+    loadBar.style.width = '100%';
+    setTimeout(() => {
+      const ls = document.getElementById('loadScreen');
+      ls.classList.add('fade');
+      setTimeout(() => ls.remove(), 900);
+    }, 400);
+  }
+}
+
+animate();
+</script>
+</body>
+</html>
